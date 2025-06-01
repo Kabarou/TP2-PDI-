@@ -9,8 +9,10 @@ img_color = cv2.cvtColor(img_color, cv2.COLOR_BGR2RGB)
 
 placa = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
 
-# plt.imshow(placa, cmap='gray')
-# plt.show()
+plt.imshow(img_color)
+plt.title("Imagen Original")
+plt.axis('off')
+plt.show()
 
 def detectar_bordes(img : np.ndarray, mascara: Tuple[int, int], th1 : int, th2: int) -> Tuple:
     """
@@ -34,6 +36,23 @@ def detectar_bordes(img : np.ndarray, mascara: Tuple[int, int], th1 : int, th2: 
     kernel = np.ones(mascara, np.uint8)
     img_dilated = cv2.dilate(img_canny, kernel, iterations=1)
     img_closed = cv2.morphologyEx(img_dilated, cv2.MORPH_CLOSE, kernel)
+
+    ax1 = plt.subplot(2, 3, 1)
+    plt.imshow(img, cmap='gray')
+    plt.title('Imagen Original')
+    plt.subplot(2, 3, 2, sharex=ax1, sharey=ax1)
+    plt.imshow(img_median, cmap='gray')
+    plt.title('Imagen con Filtro de Suavizado')
+    plt.subplot(2, 3, 3, sharex=ax1, sharey=ax1)
+    plt.imshow(img_canny, cmap='gray')
+    plt.title('Bordes Detectados con Canny')
+    plt.subplot(2, 3, 4, sharex=ax1, sharey=ax1)
+    plt.imshow(img_dilated, cmap='gray')
+    plt.title('Bordes Dilatados')
+    plt.subplot(2, 3, 5, sharex=ax1, sharey=ax1)
+    plt.imshow(img_closed, cmap='gray')
+    plt.title('Bordes Cerrados')
+    plt.show()
 
     return img_closed
 
@@ -195,6 +214,24 @@ def generar_imagen(img: np.ndarray, tipo_componente : List[Tuple[int, int, int, 
         cv2.putText(img_copy, titulo, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 0, 0), 2)
     return img_copy
 
+def visualizacion_componentes_aislados(img: np.ndarray, componente : List[Tuple[int, int, int, int, str]]) -> None:
+    """
+    Visualizacion de los componentes aislados en la imagen.
+    Args:
+        img (np.ndarray): Imagen de entrada en escala de grises.
+        componente (List[Tuple[int, int, int, int, str]]): Lista de los tipos de componentes, con sus coordenadas.
+    """
+    img_zero = np.zeros_like(img)
+    for (x, y, w, h, titulo) in componente:
+        img_zero[y:y+h, x:x+w] = img[y:y+h, x:x+w]
+        cv2.rectangle(img_zero, (x, y), (x + w, y + h), (255, 255, 255), 2)
+        cv2.putText(img_zero, titulo, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 2)
+    plt.figure(figsize=(10, 10))
+    plt.imshow(img_zero, cmap='gray')
+    plt.axis('off')
+    plt.title("Componentes aislados")
+    plt.show()
+
 mascara = (3,3)
 th1 = 0.1* 255
 th2 = 0.8 * 255
@@ -205,6 +242,10 @@ visualizar_todos_los_contornos(img_color, contornos)
 chips = detectar_chips(img_color,contornos)
 capacitadores_grandes, capacitadores_medianos, capacitadores_pequenos, capacitadores_muy_pequenos = deteccion_capacitadores(img_color,contornos)
 resistencia = detectar_resistencia(img_color,contornos)
+
+visualizacion_componentes_aislados(img_color, chips)
+visualizacion_componentes_aislados(img_color, capacitadores_grandes + capacitadores_medianos + capacitadores_pequenos + capacitadores_muy_pequenos)
+visualizacion_componentes_aislados(img_color, resistencia)
 
 os.system('cls')
 
