@@ -1,4 +1,4 @@
-# TP 1 PDI
+# TP 2 PDI
 
 Este proyecto requiere Python para su ejecución. A continuación, se detallan las instrucciones para configurar el entorno y ejecutar el proyecto correctamente.
 
