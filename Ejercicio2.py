@@ -157,3 +157,67 @@ def calcular_resistencia(banda1: str, banda2: str, banda3: str) -> int:
     valor_base = d1 * 10 + d2
     resistencia_ohm = valor_base * (10 ** exponente)
     return resistencia_ohm
+
+def mascara_azul_inversa(img_bgr):
+
+    azul_bajo = np.array([ 90,  80,  40]) 
+    azul_alto = np.array([150, 255, 255])
+
+    img_hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+
+    mask = cv2.inRange(img_hsv, azul_bajo, azul_alto)
+    mask = cv2.bitwise_not(mask) # invertimos
+
+    kernel_clausura = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    kernel_apertura = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 50))
+    mascara_clausura = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_clausura, iterations=2)
+    mascara_apertura = cv2.morphologyEx(mascara_clausura, cv2.MORPH_OPEN, kernel_apertura, iterations=1)
+    return mascara_apertura
+
+def extraer_resistencia(mascara_apertura, img_bgr):
+    contornos, _ = cv2.findContours(mascara_apertura, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cont_max = max(contornos, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(cont_max)
+
+    padding = 25
+    x = x + padding
+    y = y + padding
+    w = w - 2 * padding
+    h = h - 2 * padding
+
+    resistor = img_bgr[y:y+h, x:x+w]
+    resistor_recortado = cv2.resize(resistor, (200, (h / w)))
+    return resistor_recortado
+
+def detectar_bandas():
+    pass
+
+def detectar_color_banda():
+    pass
+
+def procesar_resistencia(ruta):
+    """Pipeline de mascara, detectar rectángulo, corregir perspectiva"""
+    img_bgr = cv2.imread(str(ruta))
+    mask = mascara_azul_inversa(img_bgr)
+    resistencia_recortada = extraer_resistencia(mask)
+    img_banda1, img_banda2, img_banda3 = detectar_bandas(resistencia_recortada)
+    c1 = detectar_color_banda(img_banda1)
+    c2 = detectar_color_banda(img_banda2)
+    c3 = detectar_color_banda(img_banda3)
+
+    valor = calcular_resistencia(c1, c2, c3)
+    return c1, c2, c3, valor
+
+
+for i in range(1, 11):
+    nombre = f"R{i}_a_out.jpg"
+    ruta = os.path.join(carpeta_salida, nombre)
+    try:
+        c1, c2, c3, valor = procesar_resistencia(ruta)
+        print(f"Resistencia {nombre}:")
+        print(f"  Banda 1: {c1}")
+        print(f"  Banda 2: {c2}")
+        print(f"  Banda 3: {c3}")
+        print(f"  Valor: {valor} Ω\n")
+    except Exception as e:
+        print(f"[ERROR] {nombre}: {e}")
