@@ -201,10 +201,7 @@ def bordes_con_sobel(img_bgr):
     sobelx = cv2.Sobel(gray_smooth, cv2.CV_64F, 1, 0, ksize=3)
     sobelx = np.absolute(sobelx)
     sobelx = np.uint8(255 * sobelx / np.max(sobelx))
-
-    ##### creo que va por aca
-    k = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 15))
-    vertical = cv2.morphologyEx(sobelx, cv2.MORPH_CLOSE, k)
+    
     return sobelx
 
 def detectar_lineas_verticales(img_sobel, min_dist=10,umbral_inicial = 0.06,umbral_max = 0.5,paso_umbral = 0.005,num_bordes_esperado = 8):
@@ -318,8 +315,8 @@ def detectar_color_rgb(banda_rgb):
     # Definimos los colores con sus rangos (mín, máximo) por canal RGB
     colores_rangos = {
         'Marron': {
-            'min': np.array([62, 13, 2]),   # 92-30, 43-30, 32-30
-            'max': np.array([122, 73, 62])  # 92+30, 43+30, 32+30
+            'min': np.array([62, 13, 2]),  
+            'max': np.array([122, 73, 62])  
         },
         'Rojo': {
             'min': np.array([122, 21, 14]),
@@ -374,7 +371,7 @@ def procesar_resistencia(ruta):
 # Bucle principal
 for i in range(1, 11):
     nombre = f"R{i}_a_out.jpg"
-    ruta = os.path.join("Resistencias_out", nombre)
+    ruta = os.path.join(carpeta_salida, nombre)
     print("Leyendo:", ruta)
     if not os.path.exists(ruta):
         print("¡No existe!, compruebe el directorio de trabajo", ruta)
@@ -389,4 +386,3 @@ for i in range(1, 11):
     except Exception as e:
         print(f"[ERROR] {nombre}: {e}")
 
-        
