@@ -178,40 +178,207 @@ def extraer_resistencia(mascara_apertura, img_bgr):
     contornos, _ = cv2.findContours(mascara_apertura, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cont_max = max(contornos, key=cv2.contourArea)
     x, y, w, h = cv2.boundingRect(cont_max)
-
     padding = 25
-    x = x + padding
-    y = y + padding
-    w = w - 2 * padding
-    h = h - 2 * padding
+    x1 = max(x + padding, 0)
+    y1 = max(y + padding, 0)
+    x2 = min(x + w - padding, img_bgr.shape[1])
+    y2 = min(y + h - padding, img_bgr.shape[0])
+    roi = img_bgr[y1:y2, x1:x2]
 
-    resistor = img_bgr[y:y+h, x:x+w]
-    resistor_recortado = cv2.resize(resistor, (200, (h / w)))
-    return resistor_recortado
+    # Redimensionar manteniendo proporción
+    h_roi, w_roi = roi.shape[:2]
+    new_h = int(h_roi * (200 / w_roi))
+    resistor = cv2.resize(roi, (200, new_h))
+    return resistor
 
-def detectar_bandas():
-    pass
+def bordes_con_sobel(img_bgr):
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    gray_eq = clahe.apply(gray)
+    gray_smooth = cv2.GaussianBlur(gray_eq, (5,5), 0)
 
-def detectar_color_banda():
-    pass
+    # O Sobel para resaltar bordes
+    sobelx = cv2.Sobel(gray_smooth, cv2.CV_64F, 1, 0, ksize=3)
+    sobelx = np.absolute(sobelx)
+    sobelx = np.uint8(255 * sobelx / np.max(sobelx))
+
+    ##### creo que va por aca
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 15))
+    vertical = cv2.morphologyEx(sobelx, cv2.MORPH_CLOSE, k)
+    return sobelx
+
+def detectar_lineas_verticales(img_sobel, min_dist=10,umbral_inicial = 0.06,umbral_max = 0.5,paso_umbral = 0.005,num_bordes_esperado = 8):
+    # Calculamos el promedio de intensidad por columna (perfil vertical)
+    perfil = np.mean(img_sobel, axis=0)
+
+    # Derivamos el perfil para detectar bordes verticales (gradientes)
+    gradiente = np.abs(np.diff(perfil))
+
+    # Variables para el bucle
+    umbral = umbral_inicial
+    franjas = []
+    iteracion = 0
+    max_iter = 30
+
+    while iteracion < max_iter:
+        # Umbral final como valor absoluto
+        umbral_val = umbral * np.max(gradiente)
+        
+        # Detectamos picos sobre umbral
+        picos = np.where(gradiente > umbral_val)[0]
+
+        # Filtramos bordes muy cercanos
+        franjas = []
+        for pico in picos:
+            if len(franjas) == 0 or (pico - franjas[-1] > min_dist):
+                franjas.append(pico)
+
+        # Cantidad de franjas detectadas
+        num_franjas = len(franjas)
+
+        # Comparamos con el número esperado 
+        if num_franjas == num_bordes_esperado:
+                break
+        elif num_franjas > num_bordes_esperado:
+            umbral += paso_umbral  # suba el umbral para detectar menos franjas
+            if umbral > umbral_max:
+                umbral = umbral_max
+                break
+        else:
+            # número correcto o aceptable de franjas detectadas
+            break
+
+        iteracion += 1
+
+    print(f"Umbral final ajustado: {umbral:.3f}")
+    print(f"Franjas detectadas: {len(franjas)}")
+    return franjas
+
+def recortar_banda(img_bgr, franja):
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    x1, x2 = franja
+    banda = img_rgb[:, x1:x2]
+    return banda
+
+   
+def detectar_bandas(img_bgr):
+    imagen_sobel = bordes_con_sobel(img_bgr)
+    franjas = detectar_lineas_verticales(imagen_sobel)
+    franjas_pares = [(franjas[i], franjas[i + 1]) for i in range(0, len(franjas) - 1, 2)]
+
+    # Calcular distancias entre bandas internas: 2-3, 4-5, 6-7
+    distancia_12 = franjas[2] - franjas[1]
+    distancia_34 = franjas[4] - franjas[3]
+    distancia_56 = franjas[6] - franjas[5]
+
+    # Determinar posición de la franja dorada (solo puede estar en bordes 0-1 o 7-8)
+    if distancia_12 > distancia_56:
+        posicion_dorada = 'izquierda'
+        franja_dorada = (franjas[0], franjas[1])
+        
+        banda_3 = (franjas[2], franjas[3])
+        banda_2   = (franjas[4], franjas[5])
+        banda_1  = (franjas[6], franjas[7])
+    else:
+        posicion_dorada = 'derecha'
+        franja_dorada = (franjas[6], franjas[7])
+        
+        banda_3 = (franjas[4], franjas[5])
+        banda_2   = (franjas[2], franjas[3])  
+        banda_1  = (franjas[0], franjas[1])
+
+    print(f"Franja dorada detectada a la {posicion_dorada}")
+    b1 = recortar_banda(img_bgr, banda_1)
+    b2 = recortar_banda(img_bgr, banda_2)
+    b3 = recortar_banda(img_bgr, banda_3)
+
+    return b1, b2, b3
+
+def puntos_promedio_color_rgb(banda_rgb, num_puntos=5, margen_vertical=10):
+    alto, ancho, _ = banda_rgb.shape
+    x_centro = ancho // 2
+
+    # Tomamos puntos verticales centrados, separados por margen_vertical
+    y_inicio = alto // 2 - margen_vertical * (num_puntos // 2)
+    puntos_y = [y_inicio + i * margen_vertical for i in range(num_puntos)]
+
+    colores = []
+    for y in puntos_y:
+        # Control para que y esté dentro de la imagen
+        y = max(0, min(y, alto-1))
+        color = banda_rgb[y, x_centro]
+        colores.append(color)
+
+    color_promedio = np.mean(colores, axis=0)
+    return color_promedio.astype(int)
+
+def detectar_color_rgb(banda_rgb):
+
+    color_promedio = puntos_promedio_color_rgb(banda_rgb)
+    # Definimos los colores con sus rangos (mín, máximo) por canal RGB
+    colores_rangos = {
+        'Marron': {
+            'min': np.array([62, 13, 2]),   # 92-30, 43-30, 32-30
+            'max': np.array([122, 73, 62])  # 92+30, 43+30, 32+30
+        },
+        'Rojo': {
+            'min': np.array([122, 21, 14]),
+            'max': np.array([182, 81, 74])
+        },
+        'Naranja': {
+            'min': np.array([149, 71, 16]),
+            'max': np.array([209, 131, 76])
+        },
+        'Amarillo': {
+            'min': np.array([150, 120, 20]),  
+            'max': np.array([255, 200, 100])
+        },
+        'Violeta': {
+            'min': np.array([50, 30, 70]),
+            'max': np.array([130, 90, 150])
+        },
+        'Verde': {
+            'min': np.array([30, 50, 20]),
+            'max': np.array([80, 140, 80])
+        },
+        'Blanco': {
+            'min': np.array([138, 115, 99]),   
+            'max': np.array([198, 175, 159])  
+        },
+        'Negro': {
+            'min': np.array([3, 0, 0]),       
+            'max': np.array([60, 45, 40])     
+        }
+    }
+
+    for color_nombre, rangos in colores_rangos.items():
+        if np.all(color_promedio >= rangos['min']) and np.all(color_promedio <= rangos['max']):
+            return color_nombre
+
+    return 'desconocido'
+
 
 def procesar_resistencia(ruta):
     """Pipeline de mascara, detectar rectángulo, corregir perspectiva"""
     img_bgr = cv2.imread(str(ruta))
     mask = mascara_azul_inversa(img_bgr)
-    resistencia_recortada = extraer_resistencia(mask)
+    resistencia_recortada = extraer_resistencia(mask,img_bgr)
     img_banda1, img_banda2, img_banda3 = detectar_bandas(resistencia_recortada)
-    c1 = detectar_color_banda(img_banda1)
-    c2 = detectar_color_banda(img_banda2)
-    c3 = detectar_color_banda(img_banda3)
+    c1 = detectar_color_rgb(img_banda1)
+    c2 = detectar_color_rgb(img_banda2)
+    c3 = detectar_color_rgb(img_banda3)
 
     valor = calcular_resistencia(c1, c2, c3)
     return c1, c2, c3, valor
 
-
+# Bucle principal
 for i in range(1, 11):
     nombre = f"R{i}_a_out.jpg"
-    ruta = os.path.join(carpeta_salida, nombre)
+    ruta = os.path.join("Resistencias_out", nombre)
+    print("Leyendo:", ruta)
+    if not os.path.exists(ruta):
+        print("¡No existe!, compruebe el directorio de trabajo", ruta)
+        continue
     try:
         c1, c2, c3, valor = procesar_resistencia(ruta)
         print(f"Resistencia {nombre}:")
@@ -221,3 +388,5 @@ for i in range(1, 11):
         print(f"  Valor: {valor} Ω\n")
     except Exception as e:
         print(f"[ERROR] {nombre}: {e}")
+
+        
